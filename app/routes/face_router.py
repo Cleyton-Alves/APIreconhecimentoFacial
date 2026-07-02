@@ -1,47 +1,25 @@
-from fastapi import FastAPI, UploadFile, File, Depends
+from fastapi import APIRouter, UploadFile, File, Depends
 from sqlalchemy.orm import Session
 
+import os
+import shutil
 import cv2
 import json
 import numpy as np
-import os
-import shutil
-
 from deepface import DeepFace
+from pydantic import BaseModel
 
-from database import get_db
-from models import Usuario, RegistroPonto
-from schemas import UsuarioResponse, RegistroPontoDetalhado
-from typing import List
+from app.core.database import get_db
+from app.models.user import Usuario, RegistroPonto
+
+class PontoRequest(BaseModel):
+    nome:str
+
+router = APIRouter(prefix="/face", tags=["Face Recognition"])
 
 os.makedirs("faces", exist_ok=True)
 
-app = FastAPI()
-
-
-@app.get("/")
-def home():
-    return {"message": "API Facial Online"}
-
-
-@app.get("/usuarios", response_model=List[UsuarioResponse])
-def listar_usuarios(
-    db: Session = Depends(get_db)
-):
-    return db.query(Usuario).all()
-
-
-@app.get(
-    "/pontos-detalhado",
-    response_model=list[RegistroPontoDetalhado]
-)
-def listar_pontos_detalhado(
-    db: Session = Depends(get_db)
-):
-    return db.query(RegistroPonto).all()
-
-
-@app.post("/upload")
+@router.post("/upload")
 async def upload(file: UploadFile = File(...)):
 
     caminho = f"faces/{file.filename}"
@@ -67,9 +45,8 @@ async def upload(file: UploadFile = File(...)):
         "arquivo": file.filename,
         "rostos_encontrados": len(rostos)
     }
-
-
-@app.post("/comparar")
+    
+@router.post("/comparar")
 async def comparar(
     foto1: UploadFile = File(...),
     foto2: UploadFile = File(...)
@@ -85,6 +62,7 @@ async def comparar(
         shutil.copyfileobj(foto2.file, buffer)
 
     try:
+
         resultado = DeepFace.verify(
             img1_path=caminho1,
             img2_path=caminho2,
@@ -97,13 +75,14 @@ async def comparar(
         }
 
     finally:
+
         if os.path.exists(caminho1):
             os.remove(caminho1)
 
         if os.path.exists(caminho2):
             os.remove(caminho2)
-
-@app.post("/cadastrar")
+            
+@router.post("/cadastrar")
 async def cadastrar(
     nome: str,
     foto: UploadFile = File(...),
@@ -149,9 +128,8 @@ async def cadastrar(
         "id": usuario.id,
         "nome": usuario.nome
     }
-
-
-@app.post("/reconhecer")
+    
+@router.post("/reconhecer")
 async def reconhecer(
     foto: UploadFile = File(...),
     db: Session = Depends(get_db)
@@ -213,84 +191,31 @@ async def reconhecer(
         if os.path.exists(caminho_temp):
             os.remove(caminho_temp)
             
-@app.post("/bater-ponto")
-async def bater_ponto(
-    foto: UploadFile = File(...),
-    db: Session = Depends(get_db)
-):
+@router.post("/bater-ponto")
+def bater_ponto(data: PontoRequest, db: Session = Depends(get_db)):
 
-    caminho_temp = f"temp_{foto.filename}"
+    usuario = db.query(Usuario).filter(
+        Usuario.nome == data.nome
+    ).first()
 
-    with open(caminho_temp, "wb") as buffer:
-        shutil.copyfileobj(foto.file, buffer)
+    if usuario:
 
-    try:
+        registro = RegistroPonto(
+            usuario_id=usuario.id
+        )
 
-        for arquivo in os.listdir("faces"):
-
-            caminho_cadastrado = os.path.join("faces", arquivo)
-
-            resultado = DeepFace.verify(
-                img1_path=caminho_temp,
-                img2_path=caminho_cadastrado,
-                enforce_detection=False
-            )
-
-            if resultado["verified"]:
-
-                nome_arquivo = os.path.splitext(arquivo)[0]
-
-                usuario = db.query(Usuario).filter(
-                    Usuario.nome == nome_arquivo
-                ).first()
-
-                if usuario:
-
-                    registro = RegistroPonto(
-                        usuario_id=usuario.id
-                    )
-
-                    db.add(registro)
-                    db.commit()
-                    db.refresh(registro)
-
-                    return {
-                        "ponto_registrado": True,
-                        "usuario": usuario.nome,
-                        "horario": registro.data_hora
-                    }
+        db.add(registro)
+        db.commit()
+        db.refresh(registro)
 
         return {
-            "ponto_registrado": False,
-            "mensagem": "Usuário não reconhecido"
+            "ponto_registrado": True,
+            "usuario": usuario.nome,
+            "horario": registro.data_hora
         }
 
-    finally:
-
-        if os.path.exists(caminho_temp):
-            os.remove(caminho_temp)
-
-
-@app.get("/pontos")
-def listar_pontos(
-    db: Session = Depends(get_db)
-):
-
-    registros = db.query(RegistroPonto).all()
-
-    resultado = []
-
-    for registro in registros:
-
-        usuario = db.query(Usuario).filter(
-            Usuario.id == registro.usuario_id
-        ).first()
-
-        resultado.append({
-            "id": registro.id,
-            "usuario": usuario.nome,
-            "data_hora": registro.data_hora
-        })
-
-    return resultado
-            
+    return {
+        "ponto_registrado": False,
+        "mensagem": "Usuário não encontrado"
+    }
+    

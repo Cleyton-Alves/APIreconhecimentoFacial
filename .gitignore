@@ -2,4 +2,6 @@ venv/
 __pycache__/
 *.pyc
 temp_rosto.jpg
+faces/
 .env
+faces/
