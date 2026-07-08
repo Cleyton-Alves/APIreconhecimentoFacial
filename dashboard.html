@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard Ponto Facial</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        body {
+            font-family: Arial;
+            margin: 20px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        th {
+            background: #f2f2f2;
+        }
+
+        .info {
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>📊 Dashboard de Pontos</h1>
+
+    <div class="info">
+        <h3>Total de registros: <span id="total">0</span></h3>
+        <h3>Último usuário: <span id="ultimo">-</span></h3>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Usuário</th>
+                <th>Data / Hora</th>
+            </tr>
+        </thead>
+
+        <tbody id="tabela"></tbody>
+    </table>
+
+    <script>
+        async function carregar() {
+            try {
+                const res = await fetch("http://127.0.0.1:8000/users/pontos");
+
+                if (!res.ok) {
+                    throw new Error("Erro HTTP: " + res.status);
+                }
+
+                const data = await res.json();
+
+                const tabela = document.getElementById("tabela");
+                const total = document.getElementById("total");
+                const ultimo = document.getElementById("ultimo");
+
+                if (!tabela || !total || !ultimo) {
+                    console.error("Elementos HTML não encontrados");
+                    return;
+                }
+
+                tabela.innerHTML = "";
+
+                total.innerText = data.length;
+
+                ultimo.innerText = data.length
+                    ? data[data.length - 1].usuario
+                    : "-";
+
+                data.forEach(p => {
+                    tabela.innerHTML += `
+                        <tr>
+                            <td>${p.usuario}</td>
+                            <td>${p.data_hora}</td>
+                        </tr>
+                    `;
+                });
+
+                console.log("CARREGOU OK", data);
+
+            } catch (err) {
+                console.error("ERRO NO FETCH:", err);
+                alert("Erro ao carregar dados: " + err.message);
+            }
+        }
+
+        carregar();
+    </script>
+
+</body>
+</html>

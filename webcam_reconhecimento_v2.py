@@ -5,6 +5,7 @@ import numpy as np
 import time
 import mediapipe as mp
 
+from datetime import datetime
 from deepface import DeepFace
 from app.core.database import SessionLocal
 from app.models.user import Usuario
@@ -86,7 +87,12 @@ estado_ponto = {}  # ENTRADA / SAIDA
 nome_detectado = "Procurando..."
 status_ponto = ""
 tempo_status = 0
-
+horario_ponto = ""
+distancia_detectada = 0
+fps = 0
+tempo_fps = time.time()
+contador_fps = 0
+status_reconhecimento = "AGUARDANDO"
 
 # =========================
 # LOOP PRINCIPAL
@@ -135,7 +141,25 @@ while True:
                 2)
 
     tempo_atual = time.time()
+    contador_fps += 1
 
+    if tempo_atual - tempo_fps >= 1:
+        fps = contador_fps
+        contador_fps = 0
+        tempo_fps = tempo_atual
+        
+# =========================
+# COR DO STATUS
+# =========================
+        
+    if status_reconhecimento == "RECONHECIDO":
+        cor_status = (0,255,0)
+    elif status_reconhecimento == "DESCONHECIDO":
+        cor_status = (0,0,255)
+    else:
+        cor_status = (0,255,255)
+    
+    
     # =========================
     # RECONHECIMENTO
     # =========================
@@ -176,13 +200,103 @@ while True:
 
                 print("Nome:", melhor_nome)
                 print("Distância:", menor_distancia)
+                
+                distancia_detectada = menor_distancia
+                # =========================
+                # PAINEL V2
+                # =========================
+
+                # Fundo do painel
+                
+                cv2.rectangle(frame, (5,45), (420,250), (35,35,35), -1)
+                cv2.rectangle(frame, (5,45), (420,250), (70,70,70), 2)
+                
+                # Título
+                cv2.putText(
+                    frame,
+                    "FACE RECOGNITION SYSTEM",
+                    (15, 70),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 255),
+                    2
+                )
+
+                # Usuário
+                cv2.putText(
+                    frame,
+                    f"Usuario : {nome_detectado}",
+                    (15, 100),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255, 255, 255),
+                    2
+                )
+
+                # Distância
+                cv2.putText(
+                    frame,
+                    f"Distancia : {distancia_detectada:.2f}",
+                    (15, 125),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255, 255, 255),
+                    2
+                )
+
+                # Horário
+                cv2.putText(
+                    frame,
+                    f"Horario : {horario_ponto}",
+                    (15, 150),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255, 255, 255),
+                    2
+                    )
+                cv2.putText(
+                frame,
+                f"Status : {status_reconhecimento}",
+                (15,175),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                cor_status,
+                2
+                )
+
+                cv2.putText(
+                    frame,
+                    f"FPS : {fps}",
+                    (15,200),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255,255,255),
+                    2
+                    )
+
+                cv2.putText(
+                    frame,
+                    f"Rostos : {len(rostos)}",
+                    (15,225),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255,255,255),
+                    2
+                    )
+
 
                 # =========================
                 # DECISÃO
                 # =========================
+                print("Nome:", melhor_nome)
+                print("Distância:", menor_distancia)
+
                 if menor_distancia < 2.5:
 
+                    print(">>> RECONHECIDO")
+
                     nome_detectado = melhor_nome
+                    status_reconhecimento = "RECONHECIDO"
 
                     agora = time.time()
 
@@ -204,11 +318,16 @@ while True:
 
                         bater_ponto(melhor_nome, tipo)
 
-                        status_ponto = f"{melhor_nome} - {tipo} Ponto Registrado"
+                        horario_ponto = datetime.now().strftime("%H:%M:%S")
+
+                        status_ponto = "PONTO REGISTRADO"
+
                         tempo_status = agora
+                        
 
                 else:
                     nome_detectado = "Desconhecido"
+                    status_reconhecimento = "DESCONHECIDO"
 
             except Exception as e:
                 print("Erro reconhecimento:", e)
@@ -217,20 +336,25 @@ while True:
     # DESENHO
     # =========================
     for (x, y, bw, bh) in rostos:
+        cor = (0, 255, 0) if nome_detectado != "Desconhecido" else (0, 0, 255)
 
-        cv2.rectangle(frame,
-                      (x, y),
-                      (x + bw, y + bh),
-                      (0, 255, 0),
-                      2)
+        cv2.rectangle(
+            frame,
+            (x, y),
+            (x + bw, y + bh),
+            cor,
+            2
+            )
 
-        cv2.putText(frame,
-                    nome_detectado,
-                    (x, y - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (255, 0, 0),
-                    2)
+        cv2.putText(
+            frame,
+            nome_detectado,
+            (x, y - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            cor,
+            2
+        )
 
     # =========================
     # STATUS
@@ -248,7 +372,6 @@ while True:
 
     if cv2.waitKey(1) == 27:
         break
-
 
 camera.release()
 cv2.destroyAllWindows()
